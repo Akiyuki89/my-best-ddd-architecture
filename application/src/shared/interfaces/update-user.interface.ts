@@ -3,6 +3,7 @@ interface IUpdateUserData {
   email?: string;
   password?: string;
   role?: string;
+  verified?: boolean;
 }
 
 export { IUpdateUserData };

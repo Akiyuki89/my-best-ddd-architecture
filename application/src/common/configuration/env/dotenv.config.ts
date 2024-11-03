@@ -42,4 +42,8 @@ export class EnvService {
   getMailFrom(): string {
     return this.configService.get<string>('EMAIL_FROM');
   }
+
+  getMailResetUrl(): string {
+    return this.configService.get<string>('EMAIL_RESET_URL');
+  }
 }

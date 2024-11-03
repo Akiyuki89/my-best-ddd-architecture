@@ -8,38 +8,65 @@ export class ErrorHandlingUtil {
     if (error instanceof PrismaClientKnownRequestError) {
       switch (error.code) {
         case 'P2002':
-          // Erro de violação de unicidade
           this.logger.warn(`Conflict error on unique field during ${action}`);
           throw new ConflictException(`A record with a unique field already exists.`);
-
         case 'P2025':
-          // Erro de registro não encontrado
           this.logger.warn(`Record not found error during ${action}`);
           throw new NotFoundException(`The requested record was not found.`);
-
         case 'P2016':
-          // Erro de dados inválidos
           this.logger.warn(`Invalid data error during ${action}`);
           throw new BadRequestException(`Invalid data provided for the requested ${action}.`);
-
         case 'P2003':
           this.logger.warn(`Foreign key constraint failed during ${action}`);
           throw new BadRequestException(`Invalid foreign key reference in the requested ${action}.`);
-          
         default:
-          // Erro inesperado do Prisma
           this.logger.error(`Unexpected Prisma error during ${action}`, error);
           throw new InternalServerErrorException(`An unexpected error occurred with the database during ${action}.`);
       }
     } else {
       this.logger.error(`Non-Prisma error during ${action}`, error);
-      throw error; // Lança o erro não relacionado ao Prisma
+      throw error;
     }
   }
 
   static handleEmailError(error: any, action: string = 'sending email'): never {
     this.logger.error(`Error ${action}`, error.stack || error.message);
     throw new InternalServerErrorException(`Failed to ${action}. Please try again later.`);
+  }
+
+  static handleInvalidCredentials(): never {
+    this.logger.warn('Invalid login attempt due to incorrect credentials');
+    throw new UnauthorizedException('Invalid email or password');
+  }
+
+  static handleBlockedUser(): never {
+    this.logger.warn('User is temporarily blocked due to multiple failed login attempts');
+    throw new BadRequestException('User is temporarily blocked due to multiple failed login attempts. Please try again later.');
+  }
+
+  static handleTokenExpiredError(): never {
+    this.logger.warn('Token has expired');
+    throw new UnauthorizedException('Token has expired');
+  }
+
+  static handleInvalidTokenError(): never {
+    this.logger.warn('Invalid token detected');
+    throw new UnauthorizedException('Invalid token');
+  }
+
+  static handleRefreshTokenExpiredError(): never {
+    this.logger.warn('Refresh token has expired');
+    throw new UnauthorizedException('Refresh token has expired');
+  }
+
+  static handleUnauthorizedAccess(message: string = 'You are not authorized to access this resource'): never {
+    this.logger.warn('Unauthorized access attempt detected');
+    throw new UnauthorizedException(message);
+  }
+
+  static handleMalformedTokenError(): never {
+    this.logger.warn('Malformed or invalid token detected');
+    throw new UnauthorizedException('Invalid token');
   }
 
   static validateUserFields(userEntity: { getUserName: () => string; getUserEmail: () => string; getUserPassword: () => string }): void {

@@ -85,6 +85,10 @@ export class UserEntity {
     return this.resetPasswordToken?.isExpired() ?? true;
   }
 
+  setPassword(newPassword: string, encryptHelperService: EncryptHelperService): void {
+    this.userPassword = encryptHelperService.encryptPassword(newPassword);
+  }
+
   encryptPassword(encryptHelperService: EncryptHelperService): void {
     this.userPassword = encryptHelperService.encryptPassword(this.userPassword);
   }

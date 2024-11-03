@@ -72,23 +72,23 @@ export class UserEntityPersistence implements UserEntityRepository {
     }
   }
 
-  async update(id: string, updateData: Partial<UserEntity>): Promise<UserEntity> {
-    // Verificação inicial: se não há dados para atualizar, lança um erro usando o utilitário
+  async update(id: string, updateData: Partial<IUpdateUserData>): Promise<UserEntity> {
     ErrorHandlingUtil.ensureHasUpdateFields(updateData);
 
     const existingUser = await this.prisma.user.findUnique({ where: { userId: id } });
     ErrorHandlingUtil.ensureEntityExists(existingUser, id, 'User');
 
     const dataToUpdate: Partial<IUpdateUserData> = {
-      name: updateData.getUserName?.(),
-      email: updateData.getUserEmail?.(),
-      password: updateData.getUserPassword ? this.encryptionHelperService.encryptPassword(updateData.getUserPassword()) : undefined,
-      role: updateData.getUserRole?.(),
+      name: updateData.name,
+      email: updateData.email,
+      password: updateData.password ? this.encryptionHelperService.encryptPassword(updateData.password) : undefined,
+      role: updateData.role,
+      verified: updateData.verified,
     };
 
     const cleanedDataToUpdate = Object.entries(dataToUpdate).reduce((acc, [key, value]) => {
       if (value !== undefined) {
-        acc[key as keyof IUpdateUserData] = value;
+        (acc as any)[key] = value;
       }
       return acc;
     }, {} as Partial<IUpdateUserData>);
