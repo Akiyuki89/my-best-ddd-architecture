@@ -46,4 +46,9 @@ export class EnvService {
   getMailResetUrl(): string {
     return this.configService.get<string>('EMAIL_RESET_URL');
   }
+
+  // Security
+  getRefreshTokenExpiration(): number {
+    return this.configService.get<number>('REFRESH_TOKEN_EXPIRATION');
+  }
 }

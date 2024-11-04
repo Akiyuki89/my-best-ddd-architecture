@@ -5,8 +5,10 @@ import { UserEntity } from '@domain/entities/user.entity';
 import { USER_ENTITY_REPOSITORY } from '@domain/tokens/inject.token';
 import { UserEntityRepository } from '@domain/repositories/user.repository';
 import { ErrorHandlingUtil } from '@shared/utils/error.util';
+import { IUpdateUserData } from '@shared/interfaces/update-user.interface';
 import { EmailService } from '@infrastructure/email/email.service';
 import { RedisService } from '@infrastructure/redis/services/redis.service';
+import { AuthService } from '@infrastructure/security/services/auth.service';
 
 @Injectable()
 export class UserService {
@@ -18,6 +20,7 @@ export class UserService {
     private readonly envService: EnvService,
     private readonly emailService: EmailService,
     private readonly redisService: RedisService,
+    private readonly authService: AuthService,
   ) {}
 
   private async handleFailedLoginAttempt(userId: string): Promise<void> {
@@ -110,7 +113,7 @@ export class UserService {
     }
   }
 
-  async login(email: string, password: string): Promise<{ accessToken: string }> {
+  async login(email: string, password: string): Promise<{ accessToken: string; refreshToken: string }> {
     try {
       const user = await this.userEntityRepository.findByEmail(email);
 
@@ -119,7 +122,7 @@ export class UserService {
       }
 
       const isBlocked = await this.redisService.isUserBlocked(user.getUserId());
-      
+
       if (isBlocked) {
         ErrorHandlingUtil.handleBlockedUser();
       }
@@ -134,23 +137,65 @@ export class UserService {
 
       await this.redisService.resetLoginAttempts(user.getUserId());
 
-      const accessToken = this.authService.generateToken(user.getUserId(), user.getUserRole());
+      const { accessToken, refreshToken } = this.authService.generateToken(user.getUserId(), user.getUserRole());
 
-      return { accessToken };
+      return { accessToken, refreshToken };
     } catch (error) {
       this.logger.error('Error during login', error);
       throw error;
     }
   }
 
-  async logout(userId: string, accessToken: string): Promise<void> {
+  async logout(userId: string, accessToken: string, refreshToken: string): Promise<void> {
     try {
-      const expiresIn = this.authService.getTokenExpiration(accessToken);
-      await this.redisService.set(`blacklist:${accessToken}`, 'invalid', expiresIn);
+      const expiresInAccessToken = this.authService.getTokenExpiration(accessToken);
+      const expiresInRefreshToken = this.authService.getTokenExpiration(refreshToken);
+
+      await this.redisService.set(`blacklist:access:${accessToken}`, 'invalid', expiresInAccessToken);
+      await this.redisService.set(`blacklist:refresh:${refreshToken}`, 'invalid', expiresInRefreshToken);
 
       this.logger.log(`User ${userId} logged out successfully`);
     } catch (error) {
       this.logger.error('Error during logout', error);
+      throw error;
+    }
+  }
+
+  async refreshToken(refreshToken: string): Promise<{ accessToken: string }> {
+    try {
+      const isBlacklisted = await this.redisService.get(`blacklist:refresh:${refreshToken}`);
+
+      if (isBlacklisted) {
+        ErrorHandlingUtil.handleInvalidTokenError();
+      }
+
+      const { accessToken } = this.authService.refreshAccessToken(refreshToken);
+      return { accessToken };
+    } catch (error) {
+      this.logger.error('Error refreshing token', error);
+      throw error;
+    }
+  }
+
+  async revokeAllSessions(userId: string): Promise<void> {
+    try {
+      await this.redisService.set(`blacklist:all-sessions:${userId}`, 'invalid', this.envService.getRefreshTokenExpiration());
+
+      this.logger.log(`All sessions revoked for user ${userId}`);
+    } catch (error) {
+      this.logger.error(`Error revoking all sessions for user ${userId}`, error);
+      throw error;
+    }
+  }
+
+  async confirmEmail(userId: string): Promise<boolean> {
+    try {
+      await this.userEntityRepository.update(userId, { verified: true });
+
+      this.logger.log(`Email confirmed manually for user ${userId}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`Error confirming email for user ${userId}`, error);
       throw error;
     }
   }
@@ -182,6 +227,26 @@ export class UserService {
       return await this.userEntityRepository.findAll();
     } catch (error) {
       this.logger.error('Error find all users', error);
+      throw error;
+    }
+  }
+
+  async checkUserStatus(userId: string): Promise<{ isBlocked: boolean; verified: boolean }> {
+    const user = await this.userEntityRepository.findById(userId);
+    const isBlocked = await this.redisService.isUserBlocked(userId);
+
+    return { isBlocked, verified: user.getUserVerified() };
+  }
+
+  async updateProfile(userId: string, updateData: Partial<IUpdateUserData>): Promise<UserEntity> {
+    try {
+      await this.userEntityRepository.update(userId, updateData);
+      
+      const updatedUser = await this.userEntityRepository.findById(userId);
+
+      return updatedUser;
+    } catch (error) {
+      this.logger.error(`Error updating profile for user ${userId}`, error);
       throw error;
     }
   }
